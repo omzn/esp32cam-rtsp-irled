@@ -42,3 +42,5 @@
 #define DEFAULT_COLORBAR false
 
 #define DEFAULT_LED_INTENSITY 0
+
+#define LED_IR_LIGHT  16

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
+#include <Preferences.h>
 #include <esp_wifi.h>
 #include <soc/rtc_cntl_reg.h>
 #include <IotWebConf.h>
@@ -74,6 +75,7 @@ IotWebConf iotWebConf(thingName.c_str(), &dnsServer, &web_server, WIFI_PASSWORD,
 bool config_changed = false;
 // Camera initialization result
 esp_err_t camera_init_result;
+Preferences prefs;
 
 void stream_text_file_gzip(const unsigned char *content, size_t length, const char *mime_type)
 {
@@ -258,10 +260,30 @@ void handle_stream()
   log_v("stopped streaming");
 }
 
+void handle_irled()
+{
+  log_v("handle_irled");
+  int brightness;
+  brightness = prefs.getUShort("ir", 0);
+
+  // If no value present, use value from config
+  if (web_server.hasArg("v"))
+  {
+    brightness = (uint8_t)min(web_server.arg("v").toInt(), 255L);
+    // If conversion fails, v = 0
+    analogWrite(LED_IR_LIGHT, brightness);
+    prefs.putUShort("ir", brightness);
+  }
+
+  web_server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+//  web_server.send(200);
+//  String str = 
+  web_server.send(200, "text/plain", String(brightness).c_str());
+}
+
 void handle_flash()
 {
   log_v("handle_flash");
-
   if (!web_server.authenticate("admin", iotWebConf.getApPasswordParameter()->valueBuffer))
   {
     web_server.requestAuthentication(BASIC_AUTH, APP_TITLE, "401 Unauthorized<br><br>The password is incorrect.");
@@ -282,6 +304,8 @@ void handle_flash()
 
   web_server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   web_server.send(200);
+//  String str = 
+//  web_server.send(200, "text/plain", );
 }
 
 esp_err_t initialize_camera()
@@ -395,6 +419,10 @@ void setup()
   // Turn flash led off
   analogWrite(LED_FLASH, 0);
 
+  pinMode(LED_IR_LIGHT, OUTPUT);
+  // Turn flash led off
+  analogWrite(LED_IR_LIGHT, 0);
+
 #ifdef CORE_DEBUG_LEVEL
   Serial.begin(115200);
   Serial.setDebugOutput(true);
@@ -452,6 +480,8 @@ void setup()
   iotWebConf.setStatusPin(LED_BUILTIN, LOW);
   iotWebConf.init();
 
+  prefs.begin("leocam", false);
+
   camera_init_result = initialize_camera();
   if (camera_init_result == ESP_OK)
     update_camera_settings();
@@ -469,6 +499,8 @@ void setup()
   web_server.on("/stream", HTTP_GET, handle_stream);
   // Camera flash light
   web_server.on("/flash", HTTP_GET, handle_flash);
+  // Camera flash light
+  web_server.on("/irled", HTTP_GET, handle_irled);
 
   web_server.onNotFound([]()
                         { iotWebConf.handleNotFound(); });
@@ -494,7 +526,7 @@ void setup()
       } });
 
   // Set flash led intensity
-  analogWrite(LED_FLASH, param_led_intensity.value());
+  analogWrite(LED_IR_LIGHT, prefs.getUShort("ir", 0));
 }
 
 void loop()
